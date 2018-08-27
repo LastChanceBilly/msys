@@ -482,20 +482,18 @@ def confirmCard(request, card_rfid):
 
         notes = "Unrecognised card [{}].".format(card_rfid)
         notes += "Use the form below if you would like to create a new one"
-
+        card = 0
         return render(request, 'members/add_card.html', {'card_form': c_form,
                                                          'msg_info': notes,
-                                                         'logged_in': True})
+                                                         'logged_in': True}), card
 
 @login_required
 def loginCard(request, card_rfid):
     """
     Saves card login on LogCardLogin, and displays basic user info
     """
-    try:
-        request, card = confirmCard(request, card_rfid)
-    except ValueError:
-        request = confirmCard(request, card_rfid)
+    request, card = confirmCard(request, card_rfid)
+    if(card == 0):
         return request
     member = get_object_or_404(Member, id=card.member.id)
 
@@ -525,16 +523,14 @@ def noCardCode(request):
     """
     Returns confirmCard() error message when no card RFID was supplied
     """
-    return confirmCard(request, ' ')
+    request, card = confirmCard(request, ' ')
+    return request
 
 @login_required
 def checkCard(request, card_rfid):
-    try:
-        request, card = confirmCard(request, card_rfid)
-    except ValueError:
-        request = confirmCard(request, card_rfid)
-        return request
     request, card = confirmCard(request, card_rfid)
+    if(card == 0):
+        return request
     return cardDetails(request, card.pk)
 
 @login_required
