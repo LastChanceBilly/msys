@@ -12,6 +12,7 @@ from django.forms import Select, SelectMultiple, TextInput
 from django.forms import DateInput, NumberInput, TimeInput
 from django.forms import CheckboxSelectMultiple, Textarea
 
+from .stripe_handler import manager
 
 class MemberType(models.Model):
     """
@@ -78,6 +79,49 @@ class Member(models.Model):
 
     def __str__(self):
         return self.first_name + " " + self.last_name
+
+class Member_stripe_cache(models.Model):
+    member = models.ForeignKey(Member, models.PROTECT)
+
+    account_balance = models.CharField(max_length=200, default=' ')
+    created = models.DateField(default=datetime.date.today)
+    
+    delinquent = models.BooleanField(default=False)
+    description = models.CharField(max_length=200, default=' ')
+    #discount = models.CharField(max_length=200)
+    
+    email = models.CharField(max_length=200, default=' ')
+    sources = models.CharField(max_length=400, default=' ')
+
+    raw = models.TextField(default=' ')
+
+    def update(self):
+        cus_code = self.member.stripe_customer_code
+        handler = manager.manager()
+        self.raw = customer = handler.get_customer_object(cus_code)
+        try:
+            if(customer):
+                self.account_balance = customer['account_balance']
+                self.created = datetime.datetime.fromtimestamp(int(customer['created'])).strftime('%Y-%m-%d')
+                if(customer['delinquent'] == "true"):
+                    self.delinquent = True
+                else:
+                    self.delinquent = False
+                self.description = customer['description']
+                self.email = customer['email']
+                srcs = customer['sources'].data
+                for items in srcs:
+                    self.sources = self.sources + "\n" + item 
+                return 1
+            else:
+                return 0
+            return 1
+        except Exception as e:
+            print(e)
+            return 0
+
+    def __str__(self):
+        return self.member.first_name + ': ' + self.email
 
 class Membership(models.Model):
     """
@@ -215,16 +259,6 @@ class AccessCard(models.Model):
         ret = self.unique_id
         ret += ' (' + str(self.member) + ')'
         return ret
-
-#class MemberPicture(models.Model):
-#    """
-#    Pictures of every memeber
-#    """
-#    member = models.ForeignKey(Member, models.PROTECT)
-#    dir = models.CharField(max_length=400)
-#
-#    def __str__(self):
-#        return str(self.member.first_name)
 
 class AccessGroup(models.Model):
     """

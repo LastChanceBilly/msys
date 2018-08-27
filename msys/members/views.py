@@ -496,7 +496,7 @@ def loginCard(request, card_rfid):
     """
     Saves card login on LogCardLogin, and displays basic user info
     """
-    #CHECK_FOR_SUBSCRIPTION = 'sub_DThYiLwz1vS81u'
+    CHECK_FOR_SUBSCRIPTION = 'sub_DThYiLwz1vS81u'
     said_subscription_name = ' '
     pass_status = False
     msg = ' '
