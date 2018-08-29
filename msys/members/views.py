@@ -17,7 +17,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 from time import sleep
 
-from .stripe_handler import manager
+from .stripe_handler import director
 
 import stripe
 
@@ -514,7 +514,7 @@ def loginCard(request, card_rfid):
 
     #Stripe related stuff
     #Create manager obejct
-    handler = manager.manager()
+    handler = director.stripe_handler()
     if(member.stripe_customer_code == ''):
         cus_code = '  '
     else:

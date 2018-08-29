@@ -12,7 +12,7 @@ from django.forms import Select, SelectMultiple, TextInput
 from django.forms import DateInput, NumberInput, TimeInput
 from django.forms import CheckboxSelectMultiple, Textarea
 
-from .stripe_handler import manager
+from .stripe_handler import director
 
 class MemberType(models.Model):
     """
@@ -95,33 +95,89 @@ class Member_stripe_cache(models.Model):
 
     raw = models.TextField(default=' ')
 
-    def update(self):
-        cus_code = self.member.stripe_customer_code
-        handler = manager.manager()
-        self.raw = customer = handler.get_customer_object(cus_code)
-        try:
-            if(customer):
-                self.account_balance = customer['account_balance']
-                self.created = datetime.datetime.fromtimestamp(int(customer['created'])).strftime('%Y-%m-%d')
-                if(customer['delinquent'] == "true"):
-                    self.delinquent = True
-                else:
-                    self.delinquent = False
-                self.description = customer['description']
-                self.email = customer['email']
-                srcs = customer['sources'].data
-                for items in srcs:
-                    self.sources = self.sources + "\n" + item 
-                return 1
-            else:
-                return 0
-            return 1
-        except Exception as e:
-            print(e)
+    index = ['account_balance', 'created', 'delinquent', 'description', 'email', 'sources', 'raw']
+
+    @property
+    def get_balance_numeric_value(self):
+        numeric = int(float(self.account_balance)*100)*0.1
+        return numeric
+    
+    @property
+    def is_up_to_date(self):
+        """
+        Compares local cache information with stripe's database.
+        (Note: While it'll be nice to have said functionality, if a whole JSON will have
+        to be requested anyways, it becomes rather pointless. Either way, I could probably go back 
+        and find a better way later on)
+        """
+        handler = director.stripe_handler()
+        customer = handler.get_customer_object(self.member.stripe_customer_code)
+        if(customer):
+            return self.raw == customer
+        else:
+            return False
+
+    @property
+    def get_update(self):
+        print(self.raw)
+        handler = director.stripe_handler()
+        customer = handler.get_customer_object(self.member.stripe_customer_code)
+        stripe_data = self.update(customer)
+        #print(stripe_data)
+        if(stripe_data):
+            self.account_balance = stripe_data['account_balance']
+            self.created = stripe_data['created']
+            self.delinquent = stripe_data['delinquent']
+            self.description = stripe_data['description']
+            self.email = stripe_data['email']
+            self.sources = stripe_data['sources']
+            self.raw = stripe_data['raw']
+        else:
             return 0
 
+    @classmethod
+    def update_all(cls):
+        class_items = cls.objects.all()
+        handler = director.stripe_handler()
+        customer = handler.get_customer_object(cls.member.stripe_customer_code)
+        stripe_data = cls.update(customer)
+        if(stripe_data):
+            cls.account_balance = stripe_data['account_balanc']
+            cls.created = stripe_data['created']
+            cls.delinquent = stripe_data['delinquent']
+            cls.description = stripe_data['description']
+            cls.email = stripe_data['email']
+            cls.sources = stripe_data['sources']
+            cls.raw = stripe_data['raw']
+        else:
+            return 0
+
+    def update(self, customer):
+        index = self.index
+        stripe_data = {}
+        if(customer):
+            for i in index:
+                if(i == 'created'):
+                    stripe_data[i] = datetime.datetime.fromtimestamp(int(customer[i])).strftime('%Y-%m-%d')
+                elif(i == 'delinquent'):
+                    stripe_data[i] = customer[i] == "true"
+                elif(i == 'sources'):
+                    srcs = customer['sources'].data
+                    if(len(srcs) > 0):
+                        for items in srcs:
+                            stripe_data['sources'] += item + "\n"
+                    else:
+                        stripe_data['sources'] = " "
+                elif(i == 'raw'):
+                    stripe_data[i] = customer
+                else:
+                    stripe_data[i] = customer[i]
+            return stripe_data
+        else:
+            return 0   
+
     def __str__(self):
-        return self.member.first_name + ': ' + self.email
+        return self.raw
 
 class Membership(models.Model):
     """
@@ -158,6 +214,46 @@ class Membership(models.Model):
             ret += ' (' + str(delta.days) + ' remaining)'
 
         return ret
+
+class Membership_stripe_cache(models.Model):
+    stripe_customer_code = models.CharField(max_length=200, default=' ')
+
+    subs_name = models.CharField(max_length=200, default=' ')
+    id = models.CharField(max_length=200, default=' ')
+
+    billing = models.CharField(max_length=200, default=' ')
+
+    created = models.DateField(default=datetime.date.today)
+    cancel_at_period_end = models.BooleanField(default=False)
+
+    current_period_end = models.DateField(default=datetime.date.today)
+    current_period_start = models.DateField(default=datetime.date.today)
+
+    #subs_description = models.CharField(max_length=200, default=' ')
+
+    @staticmethod
+    def get_update(customer):
+        
+        subs = customer.subscriptions
+        if(len(subs.data)):
+            for data in subs.data:
+                sub_i = {}
+                #dd = data dictionary
+                dd = data.to_dict()
+                sub_i['id'] =dd['id']
+                sub_i['billing'] = dd['billing']
+
+                sub_i['created'] = datetime.datetime.fromtimestamp(int(dd['created'])).strftime('%Y-%m-%d')
+
+                sub_i['cancel_at_period_end'] = datetime.datetime.fromtimestamp(int(dd['cancel_at_period_end'])).strftime('%Y-%m-%d')
+
+                sub_i['current_period_end'] = datetime.datetime.fromtimestamp(int(dd['current_period_end'])).strftime('%Y-%m-%d')
+
+                sub_i['current_period_start'] = datetime.datetime.fromtimestamp(int(dd['current_period_start'])).strftime('%Y-%m-%d')
+
+                sub_i['subs_name'] = data.to_dict()['items']['data'][0].to_dict()['plan']['name']
+
+
 
 class Promotion(models.Model):
     """
