@@ -62,6 +62,38 @@ class Member(models.Model):
 
     brief_notes = models.CharField(max_length=200, null=True, blank=True)
 
+    @property
+    def get_cache(self):
+        if(self.has_cache == False):
+            return self.create_cache
+        else:
+            return Member_stripe_cache.objects.get(member=self)
+
+    @property
+    def has_cache(self):
+        cache_old = Member_stripe_cache.objects.filter(member=self)
+        if(len(cache_old)> 0):
+            return True
+        else:
+            return False
+
+    @property
+    def create_cache(self):
+        """
+        Creates a new Member stripe cache object, after looking for previous entries
+        and eliminating them.
+        """
+        cache_old = Member_stripe_cache.objects.filter(member=self)
+        for cache in cache_old:
+            """
+            TO DO: Output previous entries records on txt files as backups
+            """
+            cache.delete()
+        cache = Member_stripe_cache(member=self)
+        cache.get_update
+        cache.save()
+        return cache
+
     def has_active_membership(self):
         """
         Check to see if the Member has an active Membership
@@ -81,6 +113,12 @@ class Member(models.Model):
         return self.first_name + " " + self.last_name
 
 class Member_stripe_cache(models.Model):
+    """
+    Stores a local cache of a member's stripe information
+
+    Contains it's own maintenance functions, but requires at least a member object
+    to use as a reference.
+    """
     member = models.ForeignKey(Member, models.PROTECT)
 
     account_balance = models.CharField(max_length=200, default=' ')
@@ -99,14 +137,17 @@ class Member_stripe_cache(models.Model):
 
     @property
     def get_balance_numeric_value(self):
+        """
+        Returns numeric value of account_balance
+        """
         numeric = int(float(self.account_balance)*100)*0.1
         return numeric
-    
+
     @property
     def is_up_to_date(self):
         """
         Compares local cache information with stripe's database.
-        (Note: While it'll be nice to have said functionality, if a whole JSON will have
+        (Note: While it'll be nice to have said functionality, but if a whole JSON will have
         to be requested anyways, it becomes rather pointless. Either way, I could probably go back 
         and find a better way later on)
         """
@@ -119,12 +160,20 @@ class Member_stripe_cache(models.Model):
 
     @property
     def get_update(self):
+        """
+        Update this individual instance of the class. 
+        (Note: Also all membership caches related to the self.member object)
+        """
         print(self.raw)
         handler = director.stripe_handler()
         customer = handler.get_customer_object(self.member.stripe_customer_code)
         stripe_data = self.update(customer)
         #print(stripe_data)
         if(stripe_data):
+            """
+            Maybe a bad implementation. I just didn't know how to pass the dictionary as
+            arguments without creating a new instance
+            """
             self.account_balance = stripe_data['account_balance']
             self.created = stripe_data['created']
             self.delinquent = stripe_data['delinquent']
@@ -132,16 +181,28 @@ class Member_stripe_cache(models.Model):
             self.email = stripe_data['email']
             self.sources = stripe_data['sources']
             self.raw = stripe_data['raw']
+            Membership_stripe_cache.update(self.member, self.raw)
+            return 1
         else:
             return 0
 
     @classmethod
     def update_all(cls):
+        """
+        Update all instances of this class.
+        (Note: Also all membership caches related to the self.member object)
+        """
         class_items = cls.objects.all()
         handler = director.stripe_handler()
         customer = handler.get_customer_object(cls.member.stripe_customer_code)
         stripe_data = cls.update(customer)
         if(stripe_data):
+            """
+            Maybe a bad implementation. I just didn't know how to pass the dictionary as
+            arguments without creating a new instance.
+            (Note: Maybe it'll be a lot faster just calling get_update for all members on a 
+            for loop?)
+            """
             cls.account_balance = stripe_data['account_balanc']
             cls.created = stripe_data['created']
             cls.delinquent = stripe_data['delinquent']
@@ -149,10 +210,15 @@ class Member_stripe_cache(models.Model):
             cls.email = stripe_data['email']
             cls.sources = stripe_data['sources']
             cls.raw = stripe_data['raw']
+            Membership_stripe_cache.update(cls.member, cls.raw)
+            return 1
         else:
             return 0
 
     def update(self, customer):
+        """
+        Gets a direct stripe update on the customer's information and querys it for the model.
+        """
         index = self.index
         stripe_data = {}
         if(customer):
@@ -216,10 +282,11 @@ class Membership(models.Model):
         return ret
 
 class Membership_stripe_cache(models.Model):
+    member = models.ForeignKey(Member, models.PROTECT)
     stripe_customer_code = models.CharField(max_length=200, default=' ')
 
     subs_name = models.CharField(max_length=200, default=' ')
-    id = models.CharField(max_length=200, default=' ')
+    sub_id = models.CharField(max_length=200, default=' ')
 
     billing = models.CharField(max_length=200, default=' ')
 
@@ -232,26 +299,34 @@ class Membership_stripe_cache(models.Model):
     #subs_description = models.CharField(max_length=200, default=' ')
 
     @staticmethod
-    def get_update(customer):
+    def update(member, customer):
         
+        sub_i = {}
+        sub_i['stripe_customer_code'] = customer.stripe_customer_code
+        sub_i['member'] = member
+
         subs = customer.subscriptions
         if(len(subs.data)):
             for data in subs.data:
-                sub_i = {}
                 #dd = data dictionary
                 dd = data.to_dict()
-                sub_i['id'] =dd['id']
+
+                sub_i['sub_id'] =dd['id']
                 sub_i['billing'] = dd['billing']
-
                 sub_i['created'] = datetime.datetime.fromtimestamp(int(dd['created'])).strftime('%Y-%m-%d')
-
-                sub_i['cancel_at_period_end'] = datetime.datetime.fromtimestamp(int(dd['cancel_at_period_end'])).strftime('%Y-%m-%d')
-
+                sub_i['cancel_at_period_end'] = dd['cancel_at_period_end']
                 sub_i['current_period_end'] = datetime.datetime.fromtimestamp(int(dd['current_period_end'])).strftime('%Y-%m-%d')
-
                 sub_i['current_period_start'] = datetime.datetime.fromtimestamp(int(dd['current_period_start'])).strftime('%Y-%m-%d')
-
                 sub_i['subs_name'] = data.to_dict()['items']['data'][0].to_dict()['plan']['name']
+
+                sub_new = Membership_stripe_cache(**sub_i)
+
+                sub_old = Membership_stripe_cache.objects.filter(stripe_customer_code=sub_new.stripe_customer_code, sub_id=sub_new.sub_id)
+                for sub in sub_old:
+                    sub.delete()
+                sub_new.save()
+
+
 
 
 

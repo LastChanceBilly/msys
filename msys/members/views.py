@@ -506,57 +506,21 @@ def loginCard(request, card_rfid):
     if(card == 0):
         return request
     member = get_object_or_404(Member, id=card.member.id)
+    
+    member_cache = member.get_cache
+    
+    memberships = Membership_stripe_cache.objects.filter(member=member)
+    if(len(memberships)>0):
+        pass_status = True
 
     #Basic context for page rendering
     context ={'card': card, 
-             'member': member
+             'member': member,
+             'subs': memberships,
+             'email': member_cache.email,
+             'passed':pass_status
             }
-
-    #Stripe related stuff
-    #Create manager obejct
-    handler = director.stripe_handler()
-    if(member.stripe_customer_code == ''):
-        cus_code = '  '
-    else:
-        cus_code = member.stripe_customer_code
-    customer = handler.get_customer_object(cus_code)
-    #If customer exists on stripe platform
-    if(customer):
-        
-        stripe_context = {}
-        for item in ['email', 'description']:
-            stripe_context[item] = customer[item]
-        
-        context.update(stripe_context)
-        subs = customer.subscriptions
-        
-        #Get all the subscription names and compare them with CHECK_FOR_SUBSCRIPTION
-        if(len(subs.data)):
-            
-            sub_list = []
-            for data in subs.data:
-            
-                sub_id = data.to_dict()['items']['data'][0]['subscription']
-                said_subscription_name = name = data.to_dict()['items']['data'][0].to_dict()['plan']['name']
-            
-                if sub_id == CHECK_FOR_SUBSCRIPTION:
-                    pass_status = True
-            
-                sub = { 'name': name, 'id': sub_id}
-                sub_list.append(sub)
-            
-            context.update({'subs': sub_list})
-            
-            if(pass_status == False):
-                msg = "Membership '{}' not found. Could it be missing from stripe's database?".format(said_subscription_name)
-                context.update({'msg': msg})
-        
-        print(pass_status)
-        context.update({'passed': pass_status})
     
-    else:
-        msg = "Member's ({}) customer code ({}) was not found in stripe's database. Could it be a connection problem?".format(member.first_name, cus_code)
-        context.update({'msg': msg})
     
     #Create log
     if(pass_status):
