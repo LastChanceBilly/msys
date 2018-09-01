@@ -506,22 +506,30 @@ def loginCard(request, card_rfid):
     if(card == 0):
         return request
     member = get_object_or_404(Member, id=card.member.id)
+
+    print(member.has_cache)
     
     member_cache = member.get_cache
     
-    memberships = Membership_stripe_cache.objects.filter(member=member)
+    memberships = member.get_membership_cache
+
     if(len(memberships)>0):
         pass_status = True
+        """
+        for mebership in memberships:
+            if(membership.subs_name == "")
+        """
 
     #Basic context for page rendering
     context ={'card': card, 
              'member': member,
              'subs': memberships,
              'email': member_cache.email,
-             'passed':pass_status
+             'passed':pass_status,
+             'msg':msg
             }
     
-    
+
     #Create log
     if(pass_status):
         log_info = "Member: {} [ID: {}] logged in with the card: {} [ID: {}]".format(member.first_name, member.id, card.numeric(), card.id)
@@ -1016,3 +1024,22 @@ def auth(request):
 
     response = HttpResponse("Denied", content_type="text/plain")
     return response
+
+@login_required
+def updateAllCaches(request):
+    """
+    Update all member and membership caches
+    (Note: This functions needs a special update so only admins can
+    update stripe's caches)
+    """
+
+    Member.create_all_cache
+    Member_stripe_cache.update_all
+
+    mbs = []
+    for member in Member.objects.all():
+        mb_name = member.first_name
+        mb_utd = member.get_cache.email 
+        mbs.append({"name": mb_name, "cus": mb_utd})
+
+    return render(request, "members/update_all_caches.html", {"mbs": mbs})

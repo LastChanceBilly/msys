@@ -67,7 +67,21 @@ class Member(models.Model):
         if(self.has_cache == False):
             return self.create_cache
         else:
-            return Member_stripe_cache.objects.get(member=self)
+            mbs = Member_stripe_cache.objects.filter(member=self)
+            return mbs[len(mbs)-1]
+    
+    @classmethod
+    def create_all_cache(cls):
+        if(cls.has_cache == False):
+            return cls.create_cache
+
+    @property
+    def get_membership_cache(self):
+        mbs = Membership_stripe_cache.objects.filter(member=self)
+        if(len(mbs)>0):
+            return mbs
+        else:
+            return False
 
     @property
     def has_cache(self):
@@ -142,21 +156,6 @@ class Member_stripe_cache(models.Model):
         """
         numeric = int(float(self.account_balance)*100)*0.1
         return numeric
-
-    @property
-    def is_up_to_date(self):
-        """
-        Compares local cache information with stripe's database.
-        (Note: While it'll be nice to have said functionality, but if a whole JSON will have
-        to be requested anyways, it becomes rather pointless. Either way, I could probably go back 
-        and find a better way later on)
-        """
-        handler = director.stripe_handler()
-        customer = handler.get_customer_object(self.member.stripe_customer_code)
-        if(customer):
-            return self.raw == customer
-        else:
-            return False
 
     @property
     def get_update(self):
@@ -285,8 +284,8 @@ class Membership_stripe_cache(models.Model):
     member = models.ForeignKey(Member, models.PROTECT)
     stripe_customer_code = models.CharField(max_length=200, default=' ')
 
-    subs_name = models.CharField(max_length=200, default=' ')
-    sub_id = models.CharField(max_length=200, default=' ')
+    mbs_name = models.CharField(max_length=200, default=' ')
+    mbs_id = models.CharField(max_length=200, default=' ')
 
     billing = models.CharField(max_length=200, default=' ')
 
@@ -302,7 +301,7 @@ class Membership_stripe_cache(models.Model):
     def update(member, customer):
         
         sub_i = {}
-        sub_i['stripe_customer_code'] = customer.stripe_customer_code
+        sub_i['stripe_customer_code'] = customer.id
         sub_i['member'] = member
 
         subs = customer.subscriptions
@@ -311,17 +310,17 @@ class Membership_stripe_cache(models.Model):
                 #dd = data dictionary
                 dd = data.to_dict()
 
-                sub_i['sub_id'] =dd['id']
+                sub_i['mbs_id'] =dd['id']
                 sub_i['billing'] = dd['billing']
                 sub_i['created'] = datetime.datetime.fromtimestamp(int(dd['created'])).strftime('%Y-%m-%d')
                 sub_i['cancel_at_period_end'] = dd['cancel_at_period_end']
                 sub_i['current_period_end'] = datetime.datetime.fromtimestamp(int(dd['current_period_end'])).strftime('%Y-%m-%d')
                 sub_i['current_period_start'] = datetime.datetime.fromtimestamp(int(dd['current_period_start'])).strftime('%Y-%m-%d')
-                sub_i['subs_name'] = data.to_dict()['items']['data'][0].to_dict()['plan']['name']
+                sub_i['mbs_name'] = data.to_dict()['items']['data'][0].to_dict()['plan']['name']
 
                 sub_new = Membership_stripe_cache(**sub_i)
 
-                sub_old = Membership_stripe_cache.objects.filter(stripe_customer_code=sub_new.stripe_customer_code, sub_id=sub_new.sub_id)
+                sub_old = Membership_stripe_cache.objects.filter(stripe_customer_code=sub_new.stripe_customer_code, mbs_id=sub_new.mbs_id)
                 for sub in sub_old:
                     sub.delete()
                 sub_new.save()

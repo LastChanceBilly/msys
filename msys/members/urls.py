@@ -51,4 +51,5 @@ urlpatterns = [
     url(r'latency/$', views.latency, name='latency'),
     url(r'^weekly_access/$', views.weekly_access, name='weekly_access'),
     url(r'^auth/$', views.auth, name='auth'),
+    path('update/caches/', views.updateAllCaches, name='updateAllCaches'),
 ]
